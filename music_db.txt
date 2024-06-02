@@ -1,0 +1,189 @@
+CREATE TABLE Artist(
+    Artist_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(100) UNIQUE NOT NULL
+);
+
+CREATE TABLE Song (
+    Song_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Artist_ID INT NOT NULL,
+    Album_ID INT NULL,
+    Title VARCHAR(100) NOT NULL,
+    ReleaseDate DATE NOT NULL,
+    UNIQUE (Title, Artist_ID),
+    FOREIGN KEY (Artist_ID) REFERENCES Artist(Artist_ID),
+    FOREIGN KEY (Album_ID) REFERENCES Album(Album_ID)
+);
+
+CREATE TABLE Album (
+    Album_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Artist_ID INT NOT NULL,
+    Name VARCHAR(80) NOT NULL,
+    UNIQUE (Name, Artist_ID),
+    FOREIGN KEY (Artist_ID) REFERENCES Artist(Artist_ID)
+);
+
+CREATE TABLE User (
+    User_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Username VARCHAR(50) UNIQUE NOT NULL
+);
+
+CREATE TABLE Genre (
+    Genre_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(50) UNIQUE NOT NULL
+);
+
+CREATE TABLE Song_Genre (
+    Song_ID INT NOT NULL,
+    Genre_ID INT NOT NULL,
+    PRIMARY KEY (Song_ID,  Genre_ID),
+    FOREIGN KEY (Song_ID) REFERENCES Song(Song_ID),
+    FOREIGN KEY (Genre_ID) REFERENCES Genre(Genre_ID)
+);
+
+CREATE TABLE Playlist (
+    Playlist_ID INT AUTO_INCREMENT PRIMARY KEY,
+    User_ID INT,
+    Title VARCHAR(50) NOT NULL,
+    UNIQUE (Title, User_ID),
+    DateTime DATETIME NOT NULL
+);
+
+CREATE TABLE Playlist_Songs (
+    Playlist_ID INT NOT NULL,
+    Song_ID INT NOT NULL,
+    PRIMARY KEY (Playlist_ID, Song_ID),
+    FOREIGN KEY (Playlist_ID) REFERENCES Playlist(Playlist_ID),
+    FOREIGN KEY (Song_ID) REFERENCES Song(Song_ID)
+);
+
+CREATE TABLE Song_Rating (
+    Rating_ID INT AUTO_INCREMENT PRIMARY KEY,
+    User_ID INT NOT NULL,
+    Song_ID INT NOT NULL,
+    Rating ENUM('1','2','3','4','5') NOT NULL,
+    Date DATE NOT NULL,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Song_ID) REFERENCES Song(Song_ID)
+);
+
+CREATE TABLE Playlist_Rating (
+    Rating_ID INT AUTO_INCREMENT PRIMARY KEY,
+    User_ID INT NOT NULL,
+    Playlist_ID INT NOT NULL,
+    Rating ENUM('1','2','3','4','5') NOT NULL,
+    Date DATE NOT NULL,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Playlist_ID) REFERENCES Playlist(Playlist_ID)
+);
+
+CREATE TABLE Album_Rating (
+    Rating_ID INT AUTO_INCREMENT PRIMARY KEY,
+    User_ID INT NOT NULL,
+    Album_ID INT NOT NULL,
+    Rating ENUM('1','2','3','4','5') NOT NULL,
+    Date DATE NOT NULL,
+    FOREIGN KEY (User_ID) REFERENCES User(User_ID),
+    FOREIGN KEY (Album_ID) REFERENCES Album(Album_ID)
+);
+
+SELECT g.Name AS genre, COUNT(sg.Song_ID) AS number_of_songs
+FROM Genre g
+JOIN Song_Genre sg ON g.Genre_ID = sg.Genre_ID
+GROUP BY g.Genre_ID
+ORDER BY COUNT(sg.Song_ID) DESC
+LIMIT 3;
+
+SELECT DISTINCT a.Name AS artist_name
+FROM Artist a
+JOIN Song s ON a.Artist_ID = s.Artist_ID
+LEFT JOIN Album al ON s.Album_ID = al.Album_ID
+WHERE s.Album_ID IS NOT NULL  -- Songs in albums
+AND EXISTS (
+    SELECT 1
+    FROM Song s2
+    WHERE s2.Artist_ID = s.Artist_ID
+    AND s2.Album_ID IS NULL
+)
+ORDER BY artist_name;
+
+SELECT a.Name AS album_name, AVG(ar.Rating) AS average_user_rating
+FROM Album a
+JOIN Album_Rating ar ON a.Album_ID = ar.Album_ID
+JOIN User u ON ar.User_ID = u.User_ID
+WHERE YEAR(ar.Date) BETWEEN 1990 AND 1999
+GROUP BY a.Album_ID, a.Name
+ORDER BY average_user_rating DESC, a.Name ASC
+LIMIT 10;
+
+SELECT g.Name AS genre_name, COUNT(sr.Rating_ID) AS number_of_song_ratings
+FROM Genre g
+JOIN Song_Genre sg ON g.Genre_ID = sg.Genre_ID
+JOIN Song s ON sg.Song_ID = s.Song_ID
+JOIN Song_Rating sr ON s.Song_ID = sr.Song_ID
+WHERE YEAR(sr.Date) BETWEEN 1991 AND 1995
+GROUP BY g.Genre_ID, g.Name
+ORDER BY number_of_song_ratings DESC
+LIMIT 3;
+
+SELECT u.Username AS username,
+       p.Title AS playlist_title,
+       AVG(ps_song_rating.avg_rating) AS average_song_rating
+FROM User u
+JOIN Playlist p ON u.User_ID = p.User_ID
+JOIN (
+    SELECT ps.Playlist_ID, AVG(sr.Rating) AS avg_rating
+    FROM Playlist_Songs ps
+    JOIN Song_Rating sr ON ps.Song_ID = sr.Song_ID
+    GROUP BY ps.Playlist_ID
+) AS ps_song_rating ON p.Playlist_ID = ps_song_rating.Playlist_ID
+GROUP BY u.Username, p.Title
+HAVING AVG(ps_song_rating.avg_rating) >= 4.0
+ORDER BY u.Username, p.Title;
+
+SELECT u.Username AS username, 
+       COUNT(*) AS number_of_ratings
+FROM User u
+JOIN (
+    SELECT User_ID
+    FROM Song_Rating
+    UNION ALL
+    SELECT User_ID
+    FROM Album_Rating
+) AS r ON u.User_ID = r.User_ID
+GROUP BY u.User_ID, u.Username
+ORDER BY number_of_ratings DESC
+LIMIT 5;
+
+SELECT a.Name AS artist_name, COUNT(s.Song_ID) AS number_of_songs
+FROM Artist a
+JOIN Song s ON a.Artist_ID = s.Artist_ID
+JOIN Album al ON s.Album_ID = al.Album_ID
+WHERE YEAR(s.ReleaseDate) BETWEEN 1990 AND 2010
+GROUP BY a.Artist_ID, a.Name
+ORDER BY number_of_songs DESC
+LIMIT 10;
+
+SELECT s.Title AS song_title, COUNT(ps.Playlist_ID) AS number_of_playlists
+FROM Song s
+JOIN Playlist_Songs ps ON s.Song_ID = ps.Song_ID
+GROUP BY s.Song_ID, s.Title
+ORDER BY number_of_playlists DESC, s.Title ASC
+LIMIT 10;
+
+SELECT s.Title AS song_title, a.Name AS artist_name, COUNT(sr.Rating_ID) AS number_of_ratings
+FROM Song s
+JOIN Artist a ON s.Artist_ID = a.Artist_ID
+LEFT JOIN Album al ON s.Album_ID = al.Album_ID
+JOIN Song_Rating sr ON s.Song_ID = sr.Song_ID
+WHERE al.Album_ID IS NULL  -- Only consider singles (songs not part of any album)
+GROUP BY s.Song_ID, s.Title, a.Artist_ID, a.Name
+ORDER BY number_of_ratings DESC
+LIMIT 20;
+
+SELECT a.Name AS artist_title
+FROM Artist a
+WHERE a.Artist_ID NOT IN (
+    SELECT DISTINCT s.Artist_ID
+    FROM Song s
+    WHERE YEAR(s.ReleaseDate) > 1993
+);
